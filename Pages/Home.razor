@@ -1,10 +1,10 @@
 ﻿@page "/"
-@using GameStoreMono.BlazorServer.Contracts
-@using GameStoreMono.BlazorServer.Hubs
+@using GameStoreMono.BlazorServer.Dto
 @using GameStoreMono.BlazorServer.Services
-@using Microsoft.AspNetCore.SignalR
+@using GameStoreMono.BlazorServer.Models
+@using System.Collections.ObjectModel
 @inject GameService GameService
-@inject IHubContext<DataUpdateHub> HubContext
+@inject GameCollectionModel GameCollectionModel
 @inject ILogger<GameStoreMono.BlazorServer.Pages.Home> Logger
 @implements IDisposable
 
@@ -28,11 +28,11 @@
                 </tr>
             </thead>
             <tbody class="game-table-body">
-                @if (games.Count == 0)
+                @if (GameCollectionModel.Games.Count == 0)
                 {
                     <tr>
                         <td colspan="6" class="game-empty-state">
-                            @if (isLoading)
+                            @if (_isLoading)
                             {
                                 <text>Loading games...</text>
                             }
@@ -43,7 +43,7 @@
                         </td>
                     </tr>
                 }
-                @foreach (var game in games)
+                @foreach (var game in GameCollectionModel.Games)
                 {
                     <tr class="game-table-row">
                         <td class="game-table-cell--first">
@@ -77,71 +77,52 @@
         </table>
     </div>
     
-    @if (lastUpdateTime.HasValue)
+    @if (GameCollectionModel.LastUpdateTime.HasValue)
     {
         <div class="mt-4 text-sm text-gray-500">
-            Last update: @lastUpdateTime.Value.ToString("HH:mm:ss")
+            Last update: @GameCollectionModel.LastUpdateTime.Value.ToString("HH:mm:ss")
         </div>
     }
 </div>
 
 @code {
-    private List<GameSummaryDto> games = new();
-    private bool isLoading = true;
-    private DateTime? lastUpdateTime = null;
-    private Timer? _refreshTimer;
+    private bool _isLoading = true;
 
     protected override async Task OnInitializedAsync()
     {
+        // Subscribe to property change events
+        GameCollectionModel.PropertyChanged += OnGameCollectionChanged;
+        
+        // Load initial data
         await LoadGames();
-
-        // Set up periodic refresh (replace SignalR client-side connection)
-        _refreshTimer = new Timer(async _ => await RefreshData(), null, 
-            TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
 
     private async Task LoadGames()
     {
         try
         {
-            isLoading = true;
-            games = await GameService.GetGamesAsync();
+            _isLoading = true;
+            var games = await GameService.GetGamesAsync();
+            
+            // Update the shared game collection model
+            GameCollectionModel.UpdateGames(games);
             Logger.LogInformation("Successfully loaded {Count} games", games.Count);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error loading games");
-            games = new List<GameSummaryDto>(); // Ensure games is not null
         }
         finally
         {
-            isLoading = false;
+            _isLoading = false;
             await InvokeAsync(StateHasChanged);
         }
     }
 
-    private async Task RefreshData()
+    private async void OnGameCollectionChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        try
-        {
-            var updatedGames = await GameService.GetGamesAsync();
-
-            // Notify all clients via SignalR
-            await HubContext.Clients.All.SendAsync("DataUpdated", new
-            {
-                Type = "Games",
-                Data = updatedGames,
-                Timestamp = DateTime.UtcNow
-            });
-            
-            games = updatedGames;
-            lastUpdateTime = DateTime.Now;
-            await InvokeAsync(StateHasChanged);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error refreshing data");
-        }
+        // This method will be called when the background service updates the model
+        await InvokeAsync(StateHasChanged);
     }
 
     private void EditGame(Guid id)
@@ -157,8 +138,12 @@
             var success = await GameService.DeleteGameAsync(id);
             if (success)
             {
-                games.RemoveAll(g => g.Id == id);
-                await InvokeAsync(StateHasChanged);
+                // Remove from the shared model
+                var gameToRemove = GameCollectionModel.Games.FirstOrDefault(g => g.Id == id);
+                if (gameToRemove != null)
+                {
+                    GameCollectionModel.Games.Remove(gameToRemove);
+                }
                 Logger.LogInformation("Successfully deleted game {GameId}", id);
             }
             else
@@ -174,6 +159,7 @@
 
     public void Dispose()
     {
-        _refreshTimer?.Dispose();
+        // Unsubscribe from property change events to prevent memory leaks
+        GameCollectionModel.PropertyChanged -= OnGameCollectionChanged;
     }
 }

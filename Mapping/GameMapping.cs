@@ -1,6 +1,7 @@
 
-using GameStoreMono.BlazorServer.Contracts;
+using GameStoreMono.BlazorServer.Dto;
 using GameStoreMono.BlazorServer.Entities;
+using GameStoreMono.BlazorServer.Models;
 
 namespace GameStoreMono.BlazorServer.Mapping;
 
@@ -56,6 +57,20 @@ public static class GameMapping
             GenreId = dto.GenreId,
             Price = dto.Price ?? 0, // Assuming Price is required in UpdateGameDto
             ReleaseDate = dto.ReleaseDate ?? DateOnly.MinValue // Assuming ReleaseDate is optional
+        };
+    }
+
+    public static GameSummaryModel ToGameSummaryModel(this GameEntity game)
+    {
+        ArgumentNullException.ThrowIfNull(game);
+
+        return new GameSummaryModel
+        {
+            Id = game.Id,
+            Name = game.Name,
+            Genre = game.Genre!.Name,
+            Price = game.Price,
+            ReleaseDate = game.ReleaseDate
         };
     }
 }

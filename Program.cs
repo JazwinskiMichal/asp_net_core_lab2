@@ -1,7 +1,7 @@
 using GameStoreMono.BlazorServer.Data;
 using GameStoreMono.BlazorServer.Endpoints;
-using GameStoreMono.BlazorServer.Hubs;
 using GameStoreMono.BlazorServer.Interfaces;
+using GameStoreMono.BlazorServer.Models;
 using GameStoreMono.BlazorServer.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -15,18 +15,10 @@ var connectionString = builder.Configuration.GetConnectionString("GameStore") ??
                        throw new InvalidOperationException("Connection string 'GameStore' not found.");
 builder.Services.AddSqlite<GameStoreContext>(connectionString);
 
-// Add SignalR
-builder.Services.AddSignalR(options =>
-{
-    options.EnableDetailedErrors = true;
-    options.KeepAliveInterval = TimeSpan.FromSeconds(15);
-    options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
-});
-
 // Add your services
+builder.Services.AddSingleton<GameCollectionModel>();
 builder.Services.AddScoped<GameService>();
 builder.Services.AddHostedService<PlcDataService>();
-builder.Services.AddScoped<IPlcDataService, PlcDataService>();
 
 // Add API services (if keeping REST endpoints)
 builder.Services.AddEndpointsApiExplorer();
@@ -55,9 +47,6 @@ app.UseRouting();
 app.MapRazorPages();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
-
-// Map SignalR Hub
-app.MapHub<DataUpdateHub>("/datahub");
 
 // Map API endpoints (optional)
 app.MapGenresEndpoints();

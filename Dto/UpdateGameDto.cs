@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace GameStoreMono.BlazorServer.Contracts;
+namespace GameStoreMono.BlazorServer.Dto;
 
 /// <summary>
 /// Data transfer object for updating an existing game

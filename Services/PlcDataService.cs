@@ -1,20 +1,15 @@
-using GameStoreMono.BlazorServer.Data;
-using GameStoreMono.BlazorServer.Hubs;
 using GameStoreMono.BlazorServer.Interfaces;
-using GameStoreMono.BlazorServer.Mapping;
-using Microsoft.AspNetCore.SignalR;
-using Microsoft.EntityFrameworkCore;
+using GameStoreMono.BlazorServer.Models;
 
 namespace GameStoreMono.BlazorServer.Services;
 
-public class PlcDataService(IHubContext<DataUpdateHub> hubContext,
+public class PlcDataService(GameCollectionModel gameCollectionModel,
                             ILogger<PlcDataService> logger,
                             IServiceScopeFactory scopeFactory) : BackgroundService, IPlcDataService
 {
-    private readonly IHubContext<DataUpdateHub> _hubContext = hubContext;
+    private readonly GameCollectionModel _gameCollectionModel = gameCollectionModel;
     private readonly ILogger<PlcDataService> _logger = logger;
     private readonly IServiceScopeFactory _scopeFactory = scopeFactory;
-    private Timer? _timer;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -35,55 +30,33 @@ public class PlcDataService(IHubContext<DataUpdateHub> hubContext,
 
     public Task StopMonitoring()
     {
-        _timer?.Dispose();
         _logger.LogInformation("PLC Data monitoring stopped");
         return Task.CompletedTask;
-    }
-
-    public async Task NotifyClientsAsync<T>(string method, T data)
-    {
-        await _hubContext.Clients.All.SendAsync(method, data);
     }
 
     private async Task CheckForPlcDataUpdates()
     {
         try
         {
-            // Simulate PLC data check - replace with actual PLC communication
-            var hasNewData = await SimulateCheckPlcData();
+            using var scope = _scopeFactory.CreateScope();
+            var gameService = scope.ServiceProvider.GetRequiredService<GameService>();
 
-            if (hasNewData)
+            // Use your existing GameService to get games
+            var updatedGames = await gameService.GetGamesAsync();
+
+            if (updatedGames.Count == 0)
             {
-                using var scope = _scopeFactory.CreateScope();
-                var dbContext = scope.ServiceProvider.GetRequiredService<GameStoreContext>();
-
-                // Example: Get updated games data
-                var updatedGames = await dbContext.Games
-                    .Include(g => g.Genre)
-                    .Select(g => g.ToGameSummaryDto())
-                    .ToListAsync();
-
-                // Notify all connected clients
-                await NotifyClientsAsync("DataUpdated", new
-                {
-                    Type = "Games",
-                    Data = updatedGames,
-                    Timestamp = DateTime.UtcNow
-                });
-
-                _logger.LogInformation("Notified clients about data update");
+                _logger.LogInformation("No games found in database");
+                return;
             }
+
+            // Update the game collection model - this will trigger UI updates
+            _gameCollectionModel.UpdateGames(updatedGames);
+            _logger.LogInformation("PLC data updated with {Count} games", updatedGames.Count);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error checking PLC data");
         }
-    }
-
-    private async Task<bool> SimulateCheckPlcData()
-    {
-        // Simulate random data updates
-        await Task.Delay(100);
-        return Random.Shared.Next(1, 10) == 1; // 10% chance of update
     }
 }

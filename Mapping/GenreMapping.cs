@@ -1,4 +1,4 @@
-using GameStoreMono.BlazorServer.Contracts;
+using GameStoreMono.BlazorServer.Dto;
 using GameStoreMono.BlazorServer.Entities;
 
 namespace GameStoreMono.BlazorServer.Mapping;

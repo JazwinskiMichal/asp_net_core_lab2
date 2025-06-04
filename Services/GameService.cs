@@ -1,7 +1,9 @@
-using GameStoreMono.BlazorServer.Contracts;
+using GameStoreMono.BlazorServer.Dto;
 using GameStoreMono.BlazorServer.Data;
 using GameStoreMono.BlazorServer.Mapping;
 using Microsoft.EntityFrameworkCore;
+using System.Collections.ObjectModel;
+using GameStoreMono.BlazorServer.Models;
 
 namespace GameStoreMono.BlazorServer.Services;
 
@@ -10,7 +12,7 @@ public class GameService(GameStoreContext context, ILogger<GameService> logger)
     private readonly GameStoreContext _context = context;
     private readonly ILogger<GameService> _logger = logger;
 
-    public async Task<List<GameSummaryDto>> GetGamesAsync()
+    public async Task<ObservableCollection<GameSummaryModel>> GetGamesAsync()
     {
         try
         {
@@ -18,17 +20,15 @@ public class GameService(GameStoreContext context, ILogger<GameService> logger)
             
             var games = await _context.Games
                 .Include(g => g.Genre)
-                .Select(g => g.ToGameSummaryDto())
-                .AsNoTracking()
+                .Select(g => g.ToGameSummaryModel())
                 .ToListAsync();
-                
-            _logger.LogInformation("Successfully fetched {Count} games", games.Count);
-            return games;
+
+            return new ObservableCollection<GameSummaryModel>(games);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error fetching games from database");
-            return new List<GameSummaryDto>();
+            return [];
         }
     }
 
