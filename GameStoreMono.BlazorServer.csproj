@@ -18,7 +18,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Data\" />
+    <None Include="wwwroot\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Remove="wwwroot\css\modal-styles.css" />
+  </ItemGroup>
 </Project>

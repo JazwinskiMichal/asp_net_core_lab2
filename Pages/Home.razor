@@ -11,7 +11,13 @@
 <PageTitle>Game catalog</PageTitle>
 
 <div class="game-table-container">
-    <h1 class="game-table-title">Game Catalog</h1>
+    <div class="game-header">
+        <h1 class="game-table-title">Game Catalog</h1>
+        <button class="btn-add-game" @onclick="ShowAddGameModal">
+            <span class="add-icon">+</span>
+            Add New Game
+        </button>
+    </div>
     
     <div class="game-table-wrapper">
         <table class="game-table">
@@ -85,8 +91,80 @@
     }
 </div>
 
+<!-- Add Game Modal -->
+@if (_showAddModal)
+{
+    <div class="modal-overlay" @onclick="HideAddGameModal">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h2>Add New Game</h2>
+                <button class="modal-close" @onclick="HideAddGameModal">&times;</button>
+            </div>
+            
+            <EditForm Model="_newGame" OnValidSubmit="HandleValidSubmit" class="modal-body">
+                <DataAnnotationsValidator />
+                <ValidationSummary class="validation-summary" />
+                
+                <div class="form-group">
+                    <label for="gameName">Game Name *</label>
+                    <InputText id="gameName" @bind-Value="_newGame.Name" class="form-input" />
+                    <ValidationMessage For="@(() => _newGame.Name)" class="validation-message" />
+                </div>
+                
+                <div class="form-group">
+                    <label for="gameGenre">Genre *</label>
+                    <InputSelect id="gameGenre" @bind-Value="_newGame.GenreId" class="form-input">
+                        <option value="">Select a genre...</option>
+                        @foreach (var genre in _genres)
+                        {
+                            <option value="@genre.Id">@genre.Name</option>
+                        }
+                    </InputSelect>
+                    <ValidationMessage For="@(() => _newGame.GenreId)" class="validation-message" />
+                </div>
+                
+                <div class="form-group">
+                    <label for="gamePrice">Price ($) *</label>
+                    <InputNumber id="gamePrice" @bind-Value="_newGame.Price" class="form-input" step="0.01" />
+                    <ValidationMessage For="@(() => _newGame.Price)" class="validation-message" />
+                </div>
+                
+                <div class="form-group">
+                    <label for="gameReleaseDate">Release Date *</label>
+                    <InputDate id="gameReleaseDate" @bind-Value="_releaseDateHelper" class="form-input" />
+                    <ValidationMessage For="@(() => _newGame.ReleaseDate)" class="validation-message" />
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn-cancel" @onclick="HideAddGameModal" disabled="@_isSubmitting">
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn-submit" disabled="@_isSubmitting">
+                        @if (_isSubmitting)
+                        {
+                            <span class="loading-spinner"></span>
+                            <text>Adding...</text>
+                        }
+                        else
+                        {
+                            <text>Add Game</text>
+                        }
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
 @code {
     private bool _isLoading = true;
+    private bool _showAddModal = false;
+    private bool _isSubmitting = false;
+    private CreateGameDto _newGame = new();
+    private List<GenreDto> _genres = [];
+    
+    // Helper for DateOnly binding (InputDate works with DateTime)
+    private DateTime _releaseDateHelper = DateTime.Today;
 
     protected override async Task OnInitializedAsync()
     {
@@ -95,6 +173,7 @@
         
         // Load initial data
         await LoadGames();
+        await LoadGenres();
     }
 
     private async Task LoadGames()
@@ -119,16 +198,90 @@
         }
     }
 
+    private async Task LoadGenres()
+    {
+        try
+        {
+            // For now, we'll use the seeded genres. You can create a GenreService later
+            _genres = new List<GenreDto>
+            {
+                new(1, "Action"),
+                new(2, "Adventure"),
+                new(3, "Role-Playing")
+            };
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading genres");
+        }
+    }
+
     private async void OnGameCollectionChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         // This method will be called when the background service updates the model
         await InvokeAsync(StateHasChanged);
     }
 
+    private void ShowAddGameModal()
+    {
+        _newGame = new CreateGameDto();
+        _releaseDateHelper = DateTime.Today;
+        _showAddModal = true;
+    }
+
+    private void HideAddGameModal()
+    {
+        _showAddModal = false;
+        _newGame = new CreateGameDto();
+        _releaseDateHelper = DateTime.Today;
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        try
+        {
+            _isSubmitting = true;
+            
+            // Update the CreateGameDto with the DateOnly from DateTime helper
+            var gameToCreate = new CreateGameDto(
+                _newGame.Name,
+                _newGame.GenreId,
+                _newGame.Price,
+                DateOnly.FromDateTime(_releaseDateHelper)
+            );
+
+            var createdGame = await GameService.CreateGameAsync(gameToCreate);
+            
+            if (createdGame != null)
+            {
+                Logger.LogInformation("Successfully created game: {GameName}", gameToCreate.Name);
+                
+                // Refresh the games list to show the new game
+                await LoadGames();
+                
+                HideAddGameModal();
+            }
+            else
+            {
+                Logger.LogWarning("Failed to create game: {GameName}", gameToCreate.Name);
+                // You could show an error message to the user here
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error creating game");
+            // You could show an error message to the user here
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
     private void EditGame(Guid id)
     {
         Logger.LogInformation("Edit game: {GameId}", id);
-        // TODO: Implement edit functionality
+        // TODO: Implement edit functionality (similar modal)
     }
 
     private async Task DeleteGame(Guid id)
