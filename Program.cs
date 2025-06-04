@@ -1,6 +1,5 @@
 using GameStoreMono.BlazorServer.Data;
 using GameStoreMono.BlazorServer.Endpoints;
-using GameStoreMono.BlazorServer.Interfaces;
 using GameStoreMono.BlazorServer.Models;
 using GameStoreMono.BlazorServer.Services;
 
@@ -13,6 +12,8 @@ builder.Services.AddServerSideBlazor();
 // Add database services
 var connectionString = builder.Configuration.GetConnectionString("GameStore") ??
                        throw new InvalidOperationException("Connection string 'GameStore' not found.");
+
+// Add SQLite database context                       
 builder.Services.AddSqlite<GameStoreContext>(connectionString);
 
 // Add your services
@@ -20,9 +21,12 @@ builder.Services.AddSingleton<GameCollectionModel>();
 builder.Services.AddScoped<GameService>();
 builder.Services.AddHostedService<PlcDataService>();
 
-// Add API services (if keeping REST endpoints)
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+// Optional: Add API services for REST endpoints (can be removed if not needed)
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen();
+}
 
 var app = builder.Build();
 
@@ -41,18 +45,29 @@ else
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-
 app.UseRouting();
 
 app.MapRazorPages();
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
-// Map API endpoints (optional)
-app.MapGenresEndpoints();
-app.MapGamesEndpoints();
+// Optional: API endpoints (can be removed if not needed)
+if (app.Environment.IsDevelopment())
+{
+    app.MapGenresEndpoints();
+    app.MapGamesEndpoints();
+}
 
-// Apply migrations
-await app.MigrateDbAsync();
+// Apply database migrations
+try
+{
+    await app.MigrateDbAsync();
+}
+catch (Exception ex)
+{
+    var logger = app.Services.GetService<ILogger<Program>>();
+    logger?.LogError(ex, "An error occurred while migrating the database");
+    throw;
+}
 
 app.Run();
