@@ -1,0 +1,179 @@
+﻿@page "/"
+@using GameStoreMono.BlazorServer.Contracts
+@using GameStoreMono.BlazorServer.Hubs
+@using GameStoreMono.BlazorServer.Services
+@using Microsoft.AspNetCore.SignalR
+@inject GameService GameService
+@inject IHubContext<DataUpdateHub> HubContext
+@inject ILogger<GameStoreMono.BlazorServer.Pages.Home> Logger
+@implements IDisposable
+
+<PageTitle>Game catalog</PageTitle>
+
+<div class="game-table-container">
+    <h1 class="game-table-title">Game Catalog</h1>
+    
+    <div class="game-table-wrapper">
+        <table class="game-table">
+            <thead class="game-table-header">
+                <tr>
+                    <th class="game-table-header-cell--first">ID</th>
+                    <th class="game-table-header-cell--regular">Name</th>
+                    <th class="game-table-header-cell--regular">Genre</th>
+                    <th class="game-table-header-cell--regular">Price</th>
+                    <th class="game-table-header-cell--regular">Release Date</th>
+                    <th class="game-table-header-cell--last">
+                        <span class="sr-only">Actions</span>
+                    </th>
+                </tr>
+            </thead>
+            <tbody class="game-table-body">
+                @if (games.Count == 0)
+                {
+                    <tr>
+                        <td colspan="6" class="game-empty-state">
+                            @if (isLoading)
+                            {
+                                <text>Loading games...</text>
+                            }
+                            else
+                            {
+                                <text>No games available.</text>
+                            }
+                        </td>
+                    </tr>
+                }
+                @foreach (var game in games)
+                {
+                    <tr class="game-table-row">
+                        <td class="game-table-cell--first">
+                            @game.Id.ToString("N")[..8]...
+                        </td>
+                        <td class="game-table-cell--regular game-name">
+                            @game.Name
+                        </td>
+                        <td class="game-table-cell--regular">
+                            <span class="game-genre-badge">
+                                @game.Genre
+                            </span>
+                        </td>
+                        <td class="game-table-cell--regular game-price">
+                            @game.Price.ToString("C")
+                        </td>
+                        <td class="game-table-cell--regular game-date">
+                            @game.ReleaseDate.ToString("MMM dd, yyyy")
+                        </td>
+                        <td class="game-table-cell--last">
+                            <button class="game-action-edit" @onclick="() => EditGame(game.Id)">
+                                Edit
+                            </button>
+                            <button class="game-action-delete" @onclick="() => DeleteGame(game.Id)">
+                                Delete
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    
+    @if (lastUpdateTime.HasValue)
+    {
+        <div class="mt-4 text-sm text-gray-500">
+            Last update: @lastUpdateTime.Value.ToString("HH:mm:ss")
+        </div>
+    }
+</div>
+
+@code {
+    private List<GameSummaryDto> games = new();
+    private bool isLoading = true;
+    private DateTime? lastUpdateTime = null;
+    private Timer? _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGames();
+
+        // Set up periodic refresh (replace SignalR client-side connection)
+        _refreshTimer = new Timer(async _ => await RefreshData(), null, 
+            TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
+
+    private async Task LoadGames()
+    {
+        try
+        {
+            isLoading = true;
+            games = await GameService.GetGamesAsync();
+            Logger.LogInformation("Successfully loaded {Count} games", games.Count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading games");
+            games = new List<GameSummaryDto>(); // Ensure games is not null
+        }
+        finally
+        {
+            isLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task RefreshData()
+    {
+        try
+        {
+            var updatedGames = await GameService.GetGamesAsync();
+
+            // Notify all clients via SignalR
+            await HubContext.Clients.All.SendAsync("DataUpdated", new
+            {
+                Type = "Games",
+                Data = updatedGames,
+                Timestamp = DateTime.UtcNow
+            });
+            
+            games = updatedGames;
+            lastUpdateTime = DateTime.Now;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error refreshing data");
+        }
+    }
+
+    private void EditGame(Guid id)
+    {
+        Logger.LogInformation("Edit game: {GameId}", id);
+        // TODO: Implement edit functionality
+    }
+
+    private async Task DeleteGame(Guid id)
+    {
+        try
+        {
+            var success = await GameService.DeleteGameAsync(id);
+            if (success)
+            {
+                games.RemoveAll(g => g.Id == id);
+                await InvokeAsync(StateHasChanged);
+                Logger.LogInformation("Successfully deleted game {GameId}", id);
+            }
+            else
+            {
+                Logger.LogWarning("Failed to delete game {GameId}", id);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error deleting game {GameId}", id);
+        }
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+}
